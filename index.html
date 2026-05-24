@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<title>Buscador de Expedientes</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body { font-family: Arial; padding:20px; background:#f9f6ef; }
+input { padding:10px; width:100%; max-width:500px; border:1px solid #c9a96e; border-radius:6px; box-sizing: border-box; }
+.card { border:1px solid #e0d3b8; margin:10px 0; padding:10px; background:white; border-radius:8px; transition: all 0.3s ease; cursor: pointer; }
+.card:hover { background:#f5f0e8; border-color:#c9a96e; transform: translateX(5px); }
+.card b { color: #8b7355; }
+.card i { color: #c9a96e; font-size: 12px; }
+#estado { font-size: 12px; color: #8b7355; margin: 10px 0; }
+</style>
+</head>
+<body>
+<h2>🔎 Buscador de Expedientes</h2>
+<input id="buscador" placeholder="Buscar..." disabled>
+<p id="estado">Cargando datos...</p>
+<div id="resultados"></div>
+<script>
+(async () => {
+
+const SUPABASE_URL = 'https://lzmawlqnifakmzwudkti.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2YWuP5GbRSdLpqR3AlaK3Q_ORD13xp1';
+
+let supabase = null;
+let datos = [];
+
+function limpiar(t){ return (t || "").toString().toLowerCase(); }
+
+// Esperar Supabase
+for(let i = 0; i < 50; i++) {
+  if(window.supabase && window.supabase.createClient) {
+    const { createClient } = window.supabase;
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    break;
+  }
+  await new Promise(r => setTimeout(r, 100));
+}
+
+if(supabase) {
+  try {
+    const { data: expedientes } = await supabase.from('expedientes').select('*');
+    const { data: seguimiento } = await supabase.from('seguimiento_casos').select('*');
+    const { data: abogados } = await supabase.from('abogados').select('*');
+
+    let abogadosMap = {};
+    if(abogados) abogados.forEach(a => { abogadosMap[a.id] = a.nombre; });
+
+    let seguimientoMap = {};
+    if(seguimiento) seguimiento.forEach(s => {
+      if(!seguimientoMap[s.expediente_id]) seguimientoMap[s.expediente_id] = [];
+      seguimientoMap[s.expediente_id].push(s);
+    });
+
+    datos = (expedientes || []).map(item => {
+      let actuaciones = seguimientoMap[item.id] || [];
+      let ultimaActuacion = '';
+      let fechaActuacion = '';
+      if(actuaciones.length > 0) {
+        let ordenadas = actuaciones.sort((a, b) => new Date(b.fecha_actuacion || 0) - new Date(a.fecha_actuacion || 0));
+        ultimaActuacion = ordenadas[0]?.actuacion_judicial || '';
+        fechaActuacion = ordenadas[0]?.fecha_actuacion || '';
+      }
+      return {
+        texto: limpiar((item.caratula || '') + ' ' + (item.num_1inst || '') + ' ' + (ultimaActuacion || '')),
+        caratula: item.caratula || '',
+        detalle: (item.num_1inst || '') + (item.num_nominacion ? ' - ' + item.num_nominacion : '') + (ultimaActuacion ? ' - (' + (fechaActuacion ? fechaActuacion.split('T')[0] : '') + ') ' + ultimaActuacion : ''),
+        responsable: item.responsable || 'Sin asignar'
+      };
+    });
+
+    document.getElementById('estado').innerText = `Datos cargados ✔ (${datos.length} casos)`;
+    document.getElementById('buscador').disabled = false;
+  } catch(e) {
+    console.error('Error:', e);
+    document.getElementById('estado').innerText = '❌ Error: ' + e.message;
+  }
+}
+
+document.getElementById('buscador').addEventListener('input', function(){
+  let v = limpiar(this.value);
+  let filtrados = datos.filter(d => d.texto.includes(v));
+  let html = '';
+  filtrados.forEach(item => {
+    html += `<div class="card"><b>${item.caratula}</b><br>${item.detalle}<br><i>${item.responsable}</i></div>`;
+  });
+  document.getElementById('resultados').innerHTML = html || 'Sin resultados';
+});
+
+})();
+</script>
+</body>
+</html>
